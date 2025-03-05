@@ -29,6 +29,7 @@ import platform
 from openai import OpenAI
 import whisper_timestamped
 from utils import *
+from lang import *
 import pprint
 
 load_package = time.time()
@@ -42,10 +43,12 @@ WHISPER_MODEL = "large-v3"
 LANGUAGE = "en"
 
 with open(os.path.join(ROOTPATH,'dsKey.yaml'), 'r') as file:
-    dsKey = yaml.safe_load_all(file)
+    dsKey = yaml.safe_load(file)
+
+# pprint.pprint(dsKey)
 
 CLIENT = OpenAI(
-    api_key=dsKey['api_ley'],
+    api_key=dsKey['api_key'],
     base_url=dsKey['base_url'],
 )
 
@@ -55,7 +58,7 @@ if not os.path.exists(".cache/audio"):
     os.makedirs(".cache/audio")
 
 file_coverter = File_coverter(ROOTPATH)
-
+Bert = Bert()
 
 def translate_subtitle(subtitles):
     window = ContentWindow()
@@ -75,6 +78,7 @@ def translate_subtitle(subtitles):
             CLIENT.chat.completions.create(
                 model="deepseek-v3",
                 messages=messages,
+                temperature=1.3,
             )
             .choices[0]
             .message.content
@@ -82,7 +86,7 @@ def translate_subtitle(subtitles):
         subtitles[i].translated_text = completion
 
         print(f"[INFO]Translated: \"{completion}\"")
-        print(f"[INFO]Translated {i+1}/{len(subtitles)} subtitles")
+        print(f"[INFO]Translated {i+1}/{len(subtitles)} subtitles\n")
 
     return subtitles
 
