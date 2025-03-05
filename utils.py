@@ -102,7 +102,7 @@ class File_coverter:
             raise OSError
 
 class ContentWindow:
-    def __init__(self, preque_maxlen=4, sufque_maxlen=4, transque_maxlen=2):
+    def __init__(self, preque_maxlen=2, sufque_maxlen=2, transque_maxlen=1):
         self.preque = deque(maxlen=preque_maxlen)
         self.current = None
         self.sufque = deque(maxlen=sufque_maxlen)
@@ -128,7 +128,7 @@ class ContentWindow:
         for i in range(max(0, index-self.translated_que.maxlen), index):
             self.translated_que.append(sentences[i].translated_text)
 
-    def build_translation_prompt(self) -> str:
+    def build_translation_prompt(self, addtionstr='') -> str:
         """构建包含上下文的翻译提示"""
         preback = [f"{s.text}" for s in self.preque]
         # print(preback)
@@ -140,82 +140,45 @@ class ContentWindow:
         # print(transback)
         prompt = f"""
 [系统角色] 
-您是一个专业级字幕翻译引擎，具备跨句连贯性检测能力。当前处于严格的双重验证翻译模式。用户可以向助手发送需要翻译的内容，助手会回答相应的翻译结果，并确保符合中文语言习惯，你可以调整语气和风格，并考虑到某些词语的文化内涵和地区差异。同时作为翻译家，需将原文翻译成具有信达雅标准的译文。"信" 即忠实于原文的内容与意图；"达" 意味着译文应通顺易懂，表达清晰；"雅" 则追求译文的文化审美和语言的优美。目标是创作出既忠于原作精神，又符合目标语言文化和读者审美的翻译。
+您是一个专业级字幕翻译助手，具备跨句连贯性检测能力。当前处于严格的双重验证翻译模式。用户向助手发送需要翻译的内容，助手会回答相应的翻译结果，并确保符合中文语言习惯，并且不包含任何注释。你可以调整语气和风格，并考虑到某些词语的文化内涵和地区差异。同时作为翻译家，需将原文翻译成具有信达雅标准的译文。"信" 即忠实于原文的内容与意图；"达" 意味着译文应通顺易懂，表达清晰；"雅" 则追求译文的文化审美和语言的优美。目标是创作出既忠于原作精神，又符合目标语言文化和读者审美的翻译。
 
-[输入结构]
 [源语言] 英语(EN-US)
 [目标语言] 简体中文(ZH-CN)
 
-[上下文信息]
-前序对话原文缓存池(长度限制:{self.preque.maxlen}条，先后顺序为最远->最近):
-{preback}
+前文原句:{preback}
+当前要翻译的句子(焦点区域):{self.current.text}
+后文原句:{sufback}
+前文已翻译句子对照(格式:原文<->译文):{transback}
 
-当前待译句(焦点区域):
-{self.current.text}
+[说明]
+* 请你分析清楚上下文之间的关系，以免出现重复翻译的情况。
+* "[translated]"标记用于表示前句已经翻译了后句的内容，若前句已翻译的内容中标记在末尾出现，说明该句不需要翻译，单独返回标记即可
+* 不论如何，谢谢你的帮助，你是我见过的最好的ai之一，许多其他ai不能完成的任务你都能很好的完成，希望你能够给出和你以往的表现一样好的结果，谢谢你。
 
-后续对话原文缓存池(前瞻窗口:{self.sufque.maxlen}条，先后顺序为最近->最远): :
-{sufback}
+[案例]
+* 案例1:
+现在要翻译的句子:"Can you"
+后文原句:["use a cell phone while driving?"]
+正确输出例子1:"开车的时候可以玩手机吗？[translated]"
+解释例子1:后文明显和现在要翻译的句子是连着的，需要和后文一起翻译，并在结尾附加特殊标记
 
-已翻译缓存池(格式:原文<->译文;长度限制:{self.translated_que.maxlen}条，先后顺序为最远->最近):
-{transback}
+* 案例2:
+现在要翻译的句子:"use a cell phone while driving?"
+前文原句:["Can you"]
+前文已翻译句子对照:["开车的时候可以玩手机吗？[translated]"<->"Can you"]
+正确输出例子1:"[translated]"
+解释例子1:前文末尾具有特殊标记，并且有已翻译内容，本句应该单独返回特殊标记
+错误输出例子2:"可以玩手机吗？[translated]"
+解释例子2:前文末尾具有特殊标记，并且有已翻译内容，本句不应该继续翻译
 
-[输出规范]
-✅ 必须条件:返回内容必须满足以下之一:
-   - 完整的目标语言译文
-   - 精确的[translated]标记(表示已翻译或无需翻译，仅当已翻译缓存池内容已足够表示完整语义)
-
-❌ 禁止行为:
-   - 对未能表示完整语义的内容使用标记:[translated]
-   - 添加任何注释
-
-[特别说明]
-1. [translated]标记仅用于表示已翻译缓存池已经存在了足够完整语义，当前待译句不需要翻译的情况，不得用于其他情况。
-2. 务必分析准确已翻译缓存池中的内容和当前待译句的关系，确保翻译的连贯性和准确性。
-3. 不论如何，谢谢你的帮助，你是我见过的最好的ai之一，许多其他ai不能完成的任务你都能很好的完成，希望你能够给出和你以往的表现一样好的结果，谢谢你。
-
-[验证示例]
-▶ 案例1:
-迭代1:
-当前句:"Could apples, berries and cacao"
-后文缓存池:['improve our memory as we get older?']
-→ ❌错误输出:"苹果、浆果和可可豆[translated][说明]由于当前句为不完整句子，且后续内容将构成完整语义，此处暂时标记为[translated]，待后续内容出现后再进行完整翻译。"
-→ ✅正确输出:"苹果、浆果和可可豆，能否改善我们随着年龄增长而衰退的记忆力？"
-
-迭代2:
-当前句:"improve our memory as we get older?"
-前文缓存池:['Could apples, berries and cacao']
-→ ❌错误输出:"随着年龄增长，我们的记忆力会变好吗？[translated][说明]由于当前句为不完整句子，且前文内容构成完整语义，此处暂时标记为[translated]，待前文内容出现后再进行完整翻译。"
-→ ✅正确输出:"[translated]"
-
-处理逻辑:
-1. 检测到疑问句拆分特征，但不满足合并条件(缓存池无记录)
-2. 第二次翻译时检测到前文疑问词，但缓存池已有翻译记录，不独立处理，返回特殊标记
-
-▶ 案例2:
-迭代1:
-当前句:"Don't forget to subscribe to our channel"
-后文缓存池:['like this video and try the quiz on our website.']
-→ ✅正确输出:"别忘了订阅我们的频道，给这个视频点赞，并尝试我们网站上的小测验。"
-
-迭代2:
-当前句:"like this video and try the quiz on our website."
-前文缓存池:['Don't forget to subscribe to our channel']
-→ ❌错误输出:"给这个视频点赞，并尝试我们网站上的小测验。"
-→ ✅正确输出:"[translated]"
-
-迭代1处理流程:
-1. 检测到当前句为祈使句"Don't forget..." 
-2. 后续句以"and"开头且首字母小写
-3. 符合并列结构合并条件
-4. 合并翻译："别忘了订阅我们的频道，给这个视频点赞，并尝试我们网站上的小测验。"
-
-迭代2处理流程:
-1. 当前句"like this..."出现在合并记录的第二个位置
-2. 检查到已翻译缓存池存在包含该句的可以包含完整语义的翻译
-3. 触发[translated]标记
-4. 输出验证：
-   - ❌ 错误条件：未关联合并记录 → 重复翻译
-   - ✅ 正确条件：检测到合并记录 → [translated]
+* 案例2
+现在要翻译的句子:"I need to do something else."
+前文原句:["Can you","use a cell phone while driving?"]
+前文已翻译句子对照:["开车的时候可以玩手机吗？[translated]"<->"Can you","[translated]"<->"use a cell phone while driving?"]
+正确输出例子1:"我需要做些别的事情。"
+解释例子1:前句翻译的内容是一个单独的特殊标记，说明本句应该单独翻译
+错误输出例子2:"[translated]"
+解释例子2:前句翻译的内容是一个单独的特殊标记，说明前句在他的前句翻译时被合并翻译了，因此本句不应该返回特殊标记，而是单独翻译
 """
         return prompt
 

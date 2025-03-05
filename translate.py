@@ -58,16 +58,35 @@ if not os.path.exists(".cache/audio"):
     os.makedirs(".cache/audio")
 
 file_coverter = File_coverter(ROOTPATH)
-Bert = Bert()
+# bert = Bert()
+
+load_model = time.time()
+print(f"[INFO]Load model: use {load_model - load_package:.2f}s")
 
 def translate_subtitle(subtitles):
     window = ContentWindow()
 
     for i in range(len(subtitles)):
         print(f"[INFO]To translate: \"{subtitles[i].text}\"")
+
+        pre_score, suf_score, additionstr = 0, 0, '[用户通过实时计算的关联度评分给出的建议]\n'
+        # if i > 0:
+        #     pre_score = bert.integrated_scoring(subtitles[i - 1].text, subtitles[i].text)
+        # if i < len(subtitles) - 1:
+        #     suf_score = bert.integrated_scoring(subtitles[i].text, subtitles[i + 1].text)
+        # print(f"[INFO]Score of crosstext: pre {pre_score:.2f}, suf {suf_score:.2f}")
+
+        # if pre_score > 0.8:
+        #     additionstr += "* 前句与待翻译句子相关度大于0.8，建议直接返回[translated]。\n"
+        # else:
+        #     additionstr += "* 前句与待翻译句子相关度小于0.8，建议单独翻译。\n"
+        # if suf_score > 0.8:
+        #     additionstr += "* 待翻译句子与后句相关度大于0.8，建议与后文一起翻译。\n"
+        # else:
+        #     additionstr += "* 待翻译句子与后句相关度小于0.8，建议单独翻译。\n"
         
         window.update_window(subtitles, i)
-        prompt = window.build_translation_prompt()
+        prompt = window.build_translation_prompt(addtionstr=additionstr)
         # print(prompt)
         messages = [{
             "role": "user",
