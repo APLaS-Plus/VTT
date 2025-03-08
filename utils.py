@@ -1,9 +1,13 @@
 import os
+<<<<<<< HEAD
 import time
+=======
+>>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
 import platform
 import subprocess
 from tqdm import tqdm
 import subprocess
+<<<<<<< HEAD
 import copy
 from collections import deque
 
@@ -46,6 +50,22 @@ class Subtitles:
             else:
                 i += 1
         self.subtitles = merged_subtitles
+=======
+from collections import deque
+
+class Subtitle:
+    def __init__(self, index='0', time="", text=""):
+        self.index = index
+        self.time = time
+        self.text = text
+        self.translated_text = ""
+
+    def get_text(self):
+        return f"{self.index}\n{self.time}\n{self.text}\n\n"
+    
+    def get_translated_text(self):
+        return f"{self.index}\n{self.time}\n{self.translated_text}\n\n"
+>>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
 
 class FileCoverter:
     def __init__(self, rootpath):
@@ -237,11 +257,19 @@ class Contents:
     def upgrade_system_prompt(self, prompt:str)->None:
         self.system_prompt = prompt
 
+<<<<<<< HEAD
     def upgrade_queue(self, subtitles:Subtitles)->None:
         _quelen = self.to_translate_queue.maxlen
         self.to_translate_queue.clear()
         for i in range(self.idx, min(len(subtitles.subtitles), self.idx + _quelen)):
             self.to_translate_queue.append(subtitles.subtitles[i])
+=======
+    def upgrade_queue(self, subtitles:list[Subtitle])->None:
+        _quelen = self.to_translate_queue.maxlen
+        self.to_translate_queue.clear()
+        for i in range(self.idx, min(len(subtitles), self.idx + _quelen)):
+            self.to_translate_queue.append(subtitles[i])
+>>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
         
     def build_contents(self)->str:
         res = ''
@@ -265,8 +293,13 @@ class TokenCounter:
     def cal_price(self,pre_pro,pre_com)->float:
         return pre_pro*self.prompt_tokens + pre_com*self.completion_tokens
     
+<<<<<<< HEAD
 def read_subtitle(file:str)->Subtitles:
     subtitles = Subtitles(name=os.path.splitext(file)[0])
+=======
+def read_subtitle(file):
+    subtitles = []
+>>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
     with open(file, "r", encoding="utf-8") as f:
         lines = f.readlines()
         i = 0
@@ -275,6 +308,7 @@ def read_subtitle(file:str)->Subtitles:
             subtitle.index = int(lines[i].strip())
             subtitle.time = lines[i + 1].strip()
             subtitle.text = lines[i + 2].strip()
+<<<<<<< HEAD
             subtitle.begin = subtitle.time.split(' --> ')[0]
             subtitle.end = subtitle.time.split(' --> ')[1]
             subtitles.subtitles.append(subtitle)
@@ -283,6 +317,14 @@ def read_subtitle(file:str)->Subtitles:
 
 def result2subtitles(result, name)->Subtitles:
     subtitles = Subtitles(name=name)
+=======
+            subtitles.append(subtitle)
+            i += 4
+    return subtitles
+
+def result2subtitles(result)->list[Subtitle]:
+    subtitles = []
+>>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
     def secend2time(secend):
         intsecend = int(secend)
         h = intsecend // 3600
@@ -291,12 +333,27 @@ def result2subtitles(result, name)->Subtitles:
         ms = int((secend - intsecend) * 1000)
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
     for i, segment in enumerate(result["segments"]):
+<<<<<<< HEAD
         begin = secend2time(float(segment['start']))
         end = secend2time(float(segment['end']))
         subtitles.subtitles.append(Subtitle(index=str(i + 1), _time=f"{begin} --> {end}", text=segment["text"][1:], begin=begin, end=end))
     return subtitles
 
 def vedio2audio(video_path, audio_path,_file_coverter:FileCoverter)->str:
+=======
+        subtitles.append(Subtitle(str(i + 1), f"{secend2time(float(segment['start']))} --> {secend2time(float(segment['end']))}", segment["text"][1:]))
+    return subtitles
+
+def subtitles2srt(subtitles, filename):
+    with open(filename + '_zh_CN' + 'srt', "w", encoding="utf-8") as f:
+        for subtitle in subtitles:
+            f.write(subtitle.get_translated_text())
+    with open(filename + '.srt', "w", encoding="utf-8") as f:
+        for subtitle in subtitles:
+            f.write(subtitle.get_text())
+
+def vedio2audio(video_path, audio_path,_file_coverter:FileCoverter):
+>>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
     video_path = os.path.join(_file_coverter.rootpath, video_path)
     audio_path = os.path.join(".cache", "audio", os.path.basename(audio_path))
     if os.path.exists(audio_path):
