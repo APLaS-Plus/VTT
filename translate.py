@@ -129,9 +129,14 @@ file_coverter = FileCoverter(ROOTPATH)
 )
 async def get_completion(_messages):
     await API_RATE_LIMITER.acquire()
-    return await CLIENT.chat.completions.create(
+    _completion = await CLIENT.chat.completions.create(
         model=cfgs["model"], messages=_messages, timeout=TIMEOUT
     )
+    _translated_completion = _completion.choices[0].message.content
+    print(f'[INFO]Translated:   """\n{_translated_completion}\n"""\n')
+    # print(translated_completion)
+    _translated_json = json.loads(_translated_completion)
+    return _completion, _translated_completion, _translated_json
 
 
 def vedio2subtitles(model, filepath: str, name: str) -> Subtitles:
@@ -176,19 +181,12 @@ async def translate_subtitle(subtitles: Subtitles) -> TokenCounter | Subtitles:
             messages.append({"role": "user", "content": content})
 
             await asyncio.sleep(random.uniform(0.5, 1.25))
-            completion = await get_completion(messages)
+            completion, translated_completion, translated_json = await get_completion(
+                messages
+            )
 
-            # pprint.pprint(completion)
-
-            translated_completion = completion.choices[0].message.content
-            print(f'[INFO]Translated:   """\n{translated_completion}\n"""\n')
-            # print(translated_completion)
-
-            translated_json = json.loads(translated_completion)
-            # pprint.pprint(translated_json)
             for k, v in translated_json.items():
                 translated_subtitles.subtitles[int(k)].text = v
-                # print(k,v)
 
             messages.append({"role": "assistant", "content": translated_completion})
             trans_ed = time.time()
