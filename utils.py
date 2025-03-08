@@ -1,36 +1,47 @@
 import os
-<<<<<<< HEAD
 import time
-=======
->>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
 import platform
+import asyncio
 import subprocess
 from tqdm import tqdm
 import subprocess
-<<<<<<< HEAD
 import copy
 from collections import deque
+import transformers
+
+chat_tokenizer_dir = os.path.dirname(__file__)
+tokenizer = transformers.AutoTokenizer.from_pretrained(
+    chat_tokenizer_dir, trust_remote_code=True
+)
 
 class Subtitle:
-    def __init__(self, index='0', _time="", text="", begin="", end=""):
+    def __init__(self, index="0", _time="", text="", begin="", end=""):
         self.index = index
         self.time = _time
-        self.begin = ''
-        self.end = ''
+        self.begin = ""
+        self.end = ""
         self.text = text
-    
+
     def get_text(self):
         return f"{self.index}\n{self.time}\n{self.text}\n\n"
 
+    def copy(self):
+        return copy.deepcopy(self)
+
+
 class Subtitles:
-    def __init__(self, name:str='', subtitles:list[Subtitle]=[]):
+    def __init__(self, name: str = "", subtitles: list[Subtitle] = []):
         self.name = name
         self.subtitles = copy.deepcopy(subtitles)
+
+    def copy(self):
+        subtitles = [subtitle.copy() for subtitle in self.subtitles]
+        return Subtitles(name=self.name, subtitles=subtitles)
     
     def subtitles2srt(self):
-        if os.path.exists(self.name + '.srt'):
-            os.remove(self.name + '.srt')
-        with open(self.name + '.srt', "w", encoding="utf-8") as f:
+        if os.path.exists(self.name + ".srt"):
+            os.remove(self.name + ".srt")
+        with open(self.name + ".srt", "w", encoding="utf-8") as f:
             for subtitle in self.subtitles:
                 f.write(subtitle.get_text())
 
@@ -41,46 +52,37 @@ class Subtitles:
             current_subtitle = self.subtitles[i]
             if current_subtitle.text != "[translated]":
                 j = i + 1
-                while j < len(self.subtitles) and self.subtitles[j].text == "[translated]":
+                while (
+                    j < len(self.subtitles) and self.subtitles[j].text == "[translated]"
+                ):
                     j += 1
                 if j > i + 1:
-                    current_subtitle.time = f"{current_subtitle.begin} --> {self.subtitles[j-1].end}"
+                    current_subtitle.time = (
+                        f"{current_subtitle.begin} --> {self.subtitles[j-1].end}"
+                    )
                 merged_subtitles.append(current_subtitle)
                 i = j
             else:
                 i += 1
         self.subtitles = merged_subtitles
-=======
-from collections import deque
 
-class Subtitle:
-    def __init__(self, index='0', time="", text=""):
-        self.index = index
-        self.time = time
-        self.text = text
-        self.translated_text = ""
-
-    def get_text(self):
-        return f"{self.index}\n{self.time}\n{self.text}\n\n"
-    
-    def get_translated_text(self):
-        return f"{self.index}\n{self.time}\n{self.translated_text}\n\n"
->>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
 
 class FileCoverter:
     def __init__(self, rootpath):
         self.rootpath = rootpath
-        self.ffmpeg_path = ''
+        self.ffmpeg_path = ""
         self.check_ffmpeg()
         print(f"[INFO]Built File_coverter with ffmpeg_path: {self.ffmpeg_path}")
-    
+
     def check_ffmpeg(self):
         print("[INFO]Checking ffmpeg")
         if platform.system() == "Linux":
             self.ffmpeg_path = "ffmpeg"
             try:
                 # 运行 ffmpeg -version 命令
-                result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True)
+                result = subprocess.run(
+                    ["ffmpeg", "-version"], capture_output=True, text=True
+                )
                 if result.returncode == 0:
                     print("[INFO]ffmpeg exists")
                 else:
@@ -90,7 +92,10 @@ class FileCoverter:
                 subprocess.run(["sudo", "apt", "update"], check=True)
                 subprocess.run(["sudo", "apt", "install", "ffmpeg", "-y"], check=True)
         elif platform.system() == "Windows":
-            self.ffmpeg_path = os.path.join(self.rootpath, "ffmpeg", "bin", "ffmpeg.exe")
+            self.ffmpeg_path = os.path.join(
+                self.rootpath, "ffmpeg", "bin", "ffmpeg.exe"
+            )
+            os.environ["PATH"] += os.pathsep + os.path.join(self.rootpath, "ffmpeg", "bin")
             if not os.path.exists("ffmpeg"):
                 print("[WARN]Without ffmpeg, downloading ffmpeg")
                 if not os.path.exists("ffmpeg.zip"):
@@ -143,17 +148,23 @@ class FileCoverter:
                             os.makedirs(parent_dir, exist_ok=True)
 
                         if not file.endswith("/"):  # 跳过目录
-                            with zip_ref.open(file) as src, open(dest_path, "wb") as dst:
+                            with zip_ref.open(file) as src, open(
+                                dest_path, "wb"
+                            ) as dst:
                                 dst.write(src.read())
                 os.remove("ffmpeg.zip")
         else:
             print("[ERROR]Unsupported platform")
             raise OSError
 
+
 class Contents:
-    def __init__(self, maxquelen = 5):
+
+    def __init__(self, maxquelen=5, subtitle_obj=None):
         self.to_translate_queue = deque(maxlen=maxquelen)
+        self.content = ''
         self.idx = 0
+        self.subtitle_obj = subtitle_obj
         self.system_prompt = f"""
 ###角色任务###
 英->中字幕翻译器，具备跨句语义检测能力
@@ -218,7 +229,7 @@ class Contents:
 当你准备好后，请回复好的
 """
 
-########################################################################################
+        ########################################################################################
         self.tip = """
 ###用户提示###
 为了防止你回复格式发生错误，在此再次提示
@@ -254,30 +265,43 @@ class Contents:
 你再次确认后，请回复好的
 """
 
-    def upgrade_system_prompt(self, prompt:str)->None:
+    def upgrade_system_prompt(self, prompt: str) -> None:
         self.system_prompt = prompt
 
-<<<<<<< HEAD
-    def upgrade_queue(self, subtitles:Subtitles)->None:
+    def upgrade_queue(self) -> None:
         _quelen = self.to_translate_queue.maxlen
         self.to_translate_queue.clear()
-        for i in range(self.idx, min(len(subtitles.subtitles), self.idx + _quelen)):
-            self.to_translate_queue.append(subtitles.subtitles[i])
-=======
-    def upgrade_queue(self, subtitles:list[Subtitle])->None:
-        _quelen = self.to_translate_queue.maxlen
-        self.to_translate_queue.clear()
-        for i in range(self.idx, min(len(subtitles), self.idx + _quelen)):
-            self.to_translate_queue.append(subtitles[i])
->>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
-        
-    def build_contents(self)->str:
-        res = ''
+        for i in range(self.idx, min(len(self.subtitle_obj.subtitles), self.idx + _quelen)):
+            self.to_translate_queue.append(self.subtitle_obj.subtitles[i])
+
+        self.content = copy.deepcopy("")
         tmp_que = list(self.to_translate_queue)
         for i in range(len(tmp_que)):
-            res += f'{self.idx + i}:{tmp_que[i].text}\n'
+            self.content += f"{self.idx + i}:{tmp_que[i].text}\n"
+
+    def build_contents(self) -> str:
         self.idx += self.to_translate_queue.maxlen
+        return self.content
+
+    def get_token(cal_str):
+        res = len(tokenizer.encode(cal_str))
         return res
+
+    def suit_the_length_of_content(self):
+        self.upgrade_queue()
+        # 二分搜索最适长度
+        left = 0
+        right = 30
+        prompt_tokens = Contents.get_token(self.system_prompt)
+        while left < right:
+            mid = left + (right - left) // 2
+            self.to_translate_queue = deque(maxlen=mid)
+            self.upgrade_queue()
+            if Contents.get_token(self.content) < prompt_tokens // 5 * 3:
+                left = mid + 1
+            else:
+                right = mid - 1
+
 
 class TokenCounter:
     def __init__(self):
@@ -290,16 +314,42 @@ class TokenCounter:
         self.prompt_tokens += pro
         self.completion_tokens += com
 
-    def cal_price(self,pre_pro,pre_com)->float:
-        return pre_pro*self.prompt_tokens + pre_com*self.completion_tokens
-    
-<<<<<<< HEAD
-def read_subtitle(file:str)->Subtitles:
+    def cal_price(self, pre_pro, pre_com) -> float:
+        return pre_pro * self.prompt_tokens + pre_com * self.completion_tokens
+
+
+class RateLimiter:
+    def __init__(self, requests_per_minute=60):
+        self.rate = requests_per_minute
+        self.available_tokens = requests_per_minute
+        self.last_check = time.time()
+        self.lock = asyncio.Lock()
+
+    async def acquire(self):
+        """等待直到可以执行下一个请求"""
+        async with self.lock:
+            now = time.time()
+            time_passed = now - self.last_check
+            self.last_check = now
+
+            # 基于经过时间添加令牌
+            self.available_tokens += time_passed * (self.rate / 60.0)
+
+            # 令牌数量上限
+            if self.available_tokens > self.rate:
+                self.available_tokens = self.rate
+
+            # 如果没有令牌可用，需要等待
+            if self.available_tokens < 1:
+                wait_time = (1 - self.available_tokens) / (self.rate / 60.0)
+                await asyncio.sleep(wait_time)
+                self.available_tokens = 0
+            else:
+                self.available_tokens -= 1
+
+
+def read_subtitle(file: str) -> Subtitles:
     subtitles = Subtitles(name=os.path.splitext(file)[0])
-=======
-def read_subtitle(file):
-    subtitles = []
->>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
     with open(file, "r", encoding="utf-8") as f:
         lines = f.readlines()
         i = 0
@@ -308,23 +358,16 @@ def read_subtitle(file):
             subtitle.index = int(lines[i].strip())
             subtitle.time = lines[i + 1].strip()
             subtitle.text = lines[i + 2].strip()
-<<<<<<< HEAD
-            subtitle.begin = subtitle.time.split(' --> ')[0]
-            subtitle.end = subtitle.time.split(' --> ')[1]
+            subtitle.begin = subtitle.time.split(" --> ")[0]
+            subtitle.end = subtitle.time.split(" --> ")[1]
             subtitles.subtitles.append(subtitle)
             i += 4
     return subtitles
 
-def result2subtitles(result, name)->Subtitles:
-    subtitles = Subtitles(name=name)
-=======
-            subtitles.append(subtitle)
-            i += 4
-    return subtitles
 
-def result2subtitles(result)->list[Subtitle]:
-    subtitles = []
->>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
+def result2subtitles(result, name) -> Subtitles:
+    subtitles = Subtitles(name=name)
+
     def secend2time(secend):
         intsecend = int(secend)
         h = intsecend // 3600
@@ -332,28 +375,23 @@ def result2subtitles(result)->list[Subtitle]:
         s = intsecend % 60
         ms = int((secend - intsecend) * 1000)
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
     for i, segment in enumerate(result["segments"]):
-<<<<<<< HEAD
-        begin = secend2time(float(segment['start']))
-        end = secend2time(float(segment['end']))
-        subtitles.subtitles.append(Subtitle(index=str(i + 1), _time=f"{begin} --> {end}", text=segment["text"][1:], begin=begin, end=end))
+        begin = secend2time(float(segment["start"]))
+        end = secend2time(float(segment["end"]))
+        subtitles.subtitles.append(
+            Subtitle(
+                index=str(i + 1),
+                _time=f"{begin} --> {end}",
+                text=segment["text"][1:],
+                begin=begin,
+                end=end,
+            )
+        )
     return subtitles
 
-def vedio2audio(video_path, audio_path,_file_coverter:FileCoverter)->str:
-=======
-        subtitles.append(Subtitle(str(i + 1), f"{secend2time(float(segment['start']))} --> {secend2time(float(segment['end']))}", segment["text"][1:]))
-    return subtitles
 
-def subtitles2srt(subtitles, filename):
-    with open(filename + '_zh_CN' + 'srt', "w", encoding="utf-8") as f:
-        for subtitle in subtitles:
-            f.write(subtitle.get_translated_text())
-    with open(filename + '.srt', "w", encoding="utf-8") as f:
-        for subtitle in subtitles:
-            f.write(subtitle.get_text())
-
-def vedio2audio(video_path, audio_path,_file_coverter:FileCoverter):
->>>>>>> 0d3fdf93c1d58e13219e33da3292767f35a1749a
+def vedio2audio(video_path, audio_path, _file_coverter: FileCoverter) -> str:
     video_path = os.path.join(_file_coverter.rootpath, video_path)
     audio_path = os.path.join(".cache", "audio", os.path.basename(audio_path))
     if os.path.exists(audio_path):
@@ -368,7 +406,8 @@ def vedio2audio(video_path, audio_path,_file_coverter:FileCoverter):
         "-vn",  # 禁用视频流
         "-acodec",
         "flac",  # 指定音频编码器
-        "-compression_level", "0",  # 无损压缩
+        "-compression_level",
+        "0",  # 无损压缩
         audio_path,  # 输出音频文件
     ]
     # 执行命令
