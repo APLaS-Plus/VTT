@@ -1,0 +1,9 @@
+.cache
+example
+models
+__pycache__
+ffmpeg
+ffmpeg copy.zip
+dsKey.yaml
+.venv
+.vscode
