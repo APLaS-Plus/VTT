@@ -9,36 +9,46 @@ import copy
 from collections import deque
 import transformers
 
+# 初始化tokenizer用于计算token数量
 chat_tokenizer_dir = os.path.dirname(__file__)
 tokenizer = transformers.AutoTokenizer.from_pretrained(
     chat_tokenizer_dir, trust_remote_code=True
 )
 
+
 class Subtitle:
+    """单条字幕类，存储字幕的索引、时间和文本内容"""
+
     def __init__(self, index="0", _time="", text="", begin="", end=""):
-        self.index = index
-        self.time = _time
-        self.begin = ""
-        self.end = ""
-        self.text = text
+        self.index = index  # 字幕索引
+        self.time = _time  # 时间段字符串 "开始时间 --> 结束时间"
+        self.begin = ""  # 开始时间
+        self.end = ""  # 结束时间
+        self.text = text  # 字幕文本内容
 
     def get_text(self):
+        """返回格式化的字幕文本，用于写入SRT文件"""
         return f"{self.index}\n{self.time}\n{self.text}\n\n"
 
     def copy(self):
+        """创建并返回当前字幕对象的深拷贝"""
         return copy.deepcopy(self)
 
 
 class Subtitles:
+    """字幕集合类，管理多个字幕并提供转换为SRT文件的功能"""
+
     def __init__(self, name: str = "", subtitles: list[Subtitle] = []):
-        self.name = name
-        self.subtitles = copy.deepcopy(subtitles)
+        self.name = name  # 字幕文件名称（不含扩展名）
+        self.subtitles = copy.deepcopy(subtitles)  # 字幕列表的深拷贝
 
     def copy(self):
+        """创建并返回字幕集合的深拷贝"""
         subtitles = [subtitle.copy() for subtitle in self.subtitles]
         return Subtitles(name=self.name, subtitles=subtitles)
-    
+
     def subtitles2srt(self):
+        """将字幕集合保存为SRT文件"""
         if os.path.exists(self.name + ".srt"):
             os.remove(self.name + ".srt")
         with open(self.name + ".srt", "w", encoding="utf-8") as f:
@@ -46,6 +56,7 @@ class Subtitles:
                 f.write(subtitle.get_text())
 
     def merge_subtitles(self):
+        """合并连续的被标记为[translated]的字幕，优化字幕结构"""
         merged_subtitles = []
         i = 0
         while i < len(self.subtitles):
@@ -57,6 +68,7 @@ class Subtitles:
                 ):
                     j += 1
                 if j > i + 1:
+                    # 合并时间段：使用第一个字幕的开始时间和最后一个被合并字幕的结束时间
                     current_subtitle.time = (
                         f"{current_subtitle.begin} --> {self.subtitles[j-1].end}"
                     )
@@ -67,16 +79,20 @@ class Subtitles:
         self.subtitles = merged_subtitles
 
 
-class FileCoverter:
+class FileConverter:
+    """文件转换器，主要负责检查和配置ffmpeg环境"""
+
     def __init__(self, rootpath):
         self.rootpath = rootpath
         self.ffmpeg_path = ""
         self.check_ffmpeg()
-        print(f"[INFO]Built File_coverter with ffmpeg_path: {self.ffmpeg_path}")
+        print(f"[INFO]Built FileConverter with ffmpeg_path: {self.ffmpeg_path}")
 
     def check_ffmpeg(self):
+        """检查ffmpeg是否安装，若未安装则进行安装或下载"""
         print("[INFO]Checking ffmpeg")
         if platform.system() == "Linux":
+            # Linux系统下直接使用系统的ffmpeg或apt安装
             self.ffmpeg_path = "ffmpeg"
             try:
                 # 运行 ffmpeg -version 命令
@@ -92,13 +108,17 @@ class FileCoverter:
                 subprocess.run(["sudo", "apt", "update"], check=True)
                 subprocess.run(["sudo", "apt", "install", "ffmpeg", "-y"], check=True)
         elif platform.system() == "Windows":
+            # Windows系统下使用本地下载的ffmpeg
             self.ffmpeg_path = os.path.join(
                 self.rootpath, "ffmpeg", "bin", "ffmpeg.exe"
             )
-            os.environ["PATH"] += os.pathsep + os.path.join(self.rootpath, "ffmpeg", "bin")
+            os.environ["PATH"] += os.pathsep + os.path.join(
+                self.rootpath, "ffmpeg", "bin"
+            )
             if not os.path.exists("ffmpeg"):
                 print("[WARN]Without ffmpeg, downloading ffmpeg")
                 if not os.path.exists("ffmpeg.zip"):
+                    # 下载ffmpeg压缩包
                     import requests
 
                     response = requests.get(
@@ -116,6 +136,7 @@ class FileCoverter:
                         for data in response.iter_content(chunk_size=1024):
                             size = f.write(data)
                             bar.update(size)
+                # 解压ffmpeg压缩包
                 import zipfile
                 from pathlib import Path
 
@@ -159,12 +180,14 @@ class FileCoverter:
 
 
 class Contents:
+    """管理翻译内容和提示词的类，用于构建API请求"""
 
     def __init__(self, maxquelen=5, subtitle_obj=None):
-        self.to_translate_queue = deque(maxlen=maxquelen)
-        self.content = ''
-        self.idx = 0
-        self.subtitle_obj = subtitle_obj
+        self.to_translate_queue = deque(maxlen=maxquelen)  # 待翻译队列
+        self.content = ""  # 当前待翻译内容
+        self.idx = 0  # 当前处理的字幕索引
+        self.subtitle_obj = subtitle_obj  # 字幕对象引用
+        # 系统提示词，指导AI如何翻译字幕
         self.system_prompt = f"""
 ###角色任务###
 英->中字幕翻译器，具备跨句语义检测能力
@@ -219,6 +242,7 @@ class Contents:
 ❌ 添加解释性文字
 ❌ 改变输出格式
 ❌ 翻译不完整句子
+❌ 翻译成繁体中文
 
 确保：
 1. 不使用Markdown代码块
@@ -230,6 +254,7 @@ class Contents:
 """
 
         ########################################################################################
+        # 提示重申，用于定期提醒AI保持正确的格式
         self.tip = """
 ###用户提示###
 为了防止你回复格式发生错误，在此再次提示
@@ -255,6 +280,7 @@ class Contents:
 ❌ 添加解释性文字
 ❌ 改变输出格式
 ❌ 翻译不完整句子
+❌ 翻译成繁体中文
 
 确保：
 1. 不使用Markdown代码块
@@ -266,12 +292,16 @@ class Contents:
 """
 
     def upgrade_system_prompt(self, prompt: str) -> None:
+        """更新系统提示词"""
         self.system_prompt = prompt
 
     def upgrade_queue(self) -> None:
+        """更新待翻译队列，从字幕对象中提取指定数量的字幕"""
         _quelen = self.to_translate_queue.maxlen
         self.to_translate_queue.clear()
-        for i in range(self.idx, min(len(self.subtitle_obj.subtitles), self.idx + _quelen)):
+        for i in range(
+            self.idx, min(len(self.subtitle_obj.subtitles), self.idx + _quelen)
+        ):
             self.to_translate_queue.append(self.subtitle_obj.subtitles[i])
 
         self.content = copy.deepcopy("")
@@ -280,14 +310,17 @@ class Contents:
             self.content += f"{self.idx + i}:{tmp_que[i].text}\n"
 
     def build_contents(self) -> str:
+        """构建内容后移动索引，准备下一批翻译"""
         self.idx += self.to_translate_queue.maxlen
         return self.content
 
     def get_token(cal_str):
+        """计算字符串的token数量"""
         res = len(tokenizer.encode(cal_str))
         return res
 
     def suit_the_length_of_content(self):
+        """调整待翻译内容的长度，确保在合理的token范围内"""
         self.upgrade_queue()
         # 二分搜索最适长度
         left = 0
@@ -297,33 +330,39 @@ class Contents:
             mid = left + (right - left) // 2
             self.to_translate_queue = deque(maxlen=mid)
             self.upgrade_queue()
-            if Contents.get_token(self.content) < prompt_tokens // 5 * 3:
+            if Contents.get_token(self.content) < prompt_tokens // 7 * 5:
                 left = mid + 1
             else:
                 right = mid - 1
 
 
 class TokenCounter:
+    """Token计数器，用于统计API请求的token使用量和计算成本"""
+
     def __init__(self):
-        self.prompt_tokens = 0
-        self.completion_tokens = 0
+        self.prompt_tokens = 0  # 提示词token计数
+        self.completion_tokens = 0  # 完成词token计数
 
     def add(self, pro, com):
+        """添加token计数"""
         if pro < 0 or com < 0:
             raise ValueError("Token counts cannot be negative.")
         self.prompt_tokens += pro
         self.completion_tokens += com
 
     def cal_price(self, pre_pro, pre_com) -> float:
+        """计算API请求的成本"""
         return pre_pro * self.prompt_tokens + pre_com * self.completion_tokens
 
 
 class RateLimiter:
+    """API请求速率限制器，确保不超过API调用频率限制"""
+
     def __init__(self, requests_per_minute=60):
-        self.rate = requests_per_minute
-        self.available_tokens = requests_per_minute
-        self.last_check = time.time()
-        self.lock = asyncio.Lock()
+        self.rate = requests_per_minute  # 每分钟允许的请求数
+        self.available_tokens = requests_per_minute  # 可用的令牌数
+        self.last_check = time.time()  # 上次检查时间
+        self.lock = asyncio.Lock()  # 异步锁，用于线程安全
 
     async def acquire(self):
         """等待直到可以执行下一个请求"""
@@ -349,6 +388,7 @@ class RateLimiter:
 
 
 def read_subtitle(file: str) -> Subtitles:
+    """从SRT文件读取字幕并返回Subtitles对象"""
     subtitles = Subtitles(name=os.path.splitext(file)[0])
     with open(file, "r", encoding="utf-8") as f:
         lines = f.readlines()
@@ -366,24 +406,26 @@ def read_subtitle(file: str) -> Subtitles:
 
 
 def result2subtitles(result, name) -> Subtitles:
+    """将whisper识别结果转换为Subtitles对象"""
     subtitles = Subtitles(name=name)
 
-    def secend2time(secend):
-        intsecend = int(secend)
-        h = intsecend // 3600
-        m = (intsecend % 3600) // 60
-        s = intsecend % 60
-        ms = int((secend - intsecend) * 1000)
+    def seconds2time(seconds):
+        """将秒转换为SRT格式的时间字符串"""
+        int_seconds = int(seconds)
+        h = int_seconds // 3600
+        m = (int_seconds % 3600) // 60
+        s = int_seconds % 60
+        ms = int((seconds - int_seconds) * 1000)
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
     for i, segment in enumerate(result["segments"]):
-        begin = secend2time(float(segment["start"]))
-        end = secend2time(float(segment["end"]))
+        begin = seconds2time(float(segment["start"]))
+        end = seconds2time(float(segment["end"]))
         subtitles.subtitles.append(
             Subtitle(
                 index=str(i + 1),
                 _time=f"{begin} --> {end}",
-                text=segment["text"][1:],
+                text=segment["text"][1:],  # 删除文本前面的空格
                 begin=begin,
                 end=end,
             )
@@ -391,13 +433,14 @@ def result2subtitles(result, name) -> Subtitles:
     return subtitles
 
 
-def vedio2audio(video_path, audio_path, _file_coverter: FileCoverter) -> str:
-    video_path = os.path.join(_file_coverter.rootpath, video_path)
+def video2audio(video_path, audio_path, file_converter: FileConverter) -> str:
+    """将视频文件转换为音频文件(FLAC格式)"""
+    video_path = os.path.join(file_converter.rootpath, video_path)
     audio_path = os.path.join(".cache", "audio", os.path.basename(audio_path))
     if os.path.exists(audio_path):
         return audio_path
     command = [
-        _file_coverter.ffmpeg_path,
+        file_converter.ffmpeg_path,
         "-hide_banner",
         "-loglevel",
         "error",
@@ -412,6 +455,6 @@ def vedio2audio(video_path, audio_path, _file_coverter: FileCoverter) -> str:
     ]
     # 执行命令
     print(f"[INFO]Cmd: {' '.join(command)}")
-    subprocess.run(command, cwd=_file_coverter.rootpath, check=True)
+    subprocess.run(command, cwd=file_converter.rootpath, check=True)
     print(f"[INFO]Video {video_path} converted to audio {audio_path}")
     return audio_path
